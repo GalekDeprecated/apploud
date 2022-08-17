@@ -1,0 +1,4 @@
+services:
+	- App\Router\RouterFactory::createRouter
+	- GuzzleHttp\Client
+	- App\Libs\Gitlab\Client

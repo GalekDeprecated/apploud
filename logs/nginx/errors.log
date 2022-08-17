@@ -1,0 +1,11 @@
+2021/12/31 15:20:14 [error] 31#31: *1 FastCGI sent in stderr: "PHP message: PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.0.2". You are running 7.4.27. in /var/www/website/vendor/composer/platform_check.php on line 24" while reading response header from upstream, client: 172.23.0.1, server: localhost, request: "GET / HTTP/1.1", upstream: "fastcgi://172.23.0.2:9000", host: "localhost:8080"
+2022/01/03 11:58:23 [error] 31#31: *18 FastCGI sent in stderr: "PHP message: PHP Fatal error:  Uncaught Error: Access to undeclared static property Tracy\Debugger::$configurator in /var/www/website/app/Bootstrap.php:20
+Stack trace:
+#0 /var/www/website/www/index.php(7): App\Bootstrap::boot()
+#1 {main}
+  thrown in /var/www/website/app/Bootstrap.php on line 20" while reading response header from upstream, client: 172.23.0.1, server: localhost, request: "GET / HTTP/1.1", upstream: "fastcgi://172.23.0.2:9000", host: "localhost:8080"
+2022/01/03 11:58:25 [error] 31#31: *18 FastCGI sent in stderr: "PHP message: PHP Fatal error:  Uncaught Error: Access to undeclared static property Tracy\Debugger::$configurator in /var/www/website/app/Bootstrap.php:20
+Stack trace:
+#0 /var/www/website/www/index.php(7): App\Bootstrap::boot()
+#1 {main}
+  thrown in /var/www/website/app/Bootstrap.php on line 20" while reading response header from upstream, client: 172.23.0.1, server: localhost, request: "GET / HTTP/1.1", upstream: "fastcgi://172.23.0.2:9000", host: "localhost:8080"
