@@ -2,217 +2,161 @@
 
 namespace App\Libs\Gitlab;
 
-use App\Libs\Gitlab\Api\Group;
-use App\Libs\Gitlab\Api\Project;
-use App\Libs\Gitlab\Api\User;
-use App\Libs\Gitlab\Response\Permission;
-use GuzzleHttp\Client as GuzzleClient;
-use GuzzleHttp\Psr7\Request as GuzzleRequest;
 
 class Client
 {
     private const ACCESS_TOKEN = 'naRAbrD8qPXaXVASQ8Zy';
 
-    private const GITLAB_API_V4 = 'https://gitlab.com/api/v4/';
-
-    private GuzzleClient $client;
-
-    /**
-     * @var Group[]
-     */
-    private array $groups;
-
-    /**
-     * @var Group\Member[]
-     */
-    private array $members;
-
-    private array $projects;
-
-    /**
-     * @var Request
-     */
-    private Request $request;
+    private \Gitlab\Client $client;
 
     public function __construct()
     {
-        $this->client = new GuzzleClient([
-            'base_uri' => self::GITLAB_API_V4,
-        ]);
-        $this->request = new Request();
-    }
-
-    private function sendRequest(GuzzleRequest $request): array
-    {
-        $response = $this->client->send($request);
-
-        return json_decode((string)$response->getBody(), true);
-    }
-
-    public function getGroup(int $groupId): Group
-    {
-        $request = $this->request->getGroup($groupId);
-        $response = $this->sendRequest($request);
-
-        $group = Group::create($response);
-        $this->groups[$group->getId()] = $group;
-
-        $members = $this->getGroupMembers($group);
-        $group->setMembers($members);
-
-        return $group;
+        $this->client = new \Gitlab\Client();
+        $this->client->authenticate(self::ACCESS_TOKEN, \Gitlab\Client::AUTH_OAUTH_TOKEN);
     }
 
     /**
-     * @param Group $topGroup
-     * @return Group[]
-     * @throws \GuzzleHttp\Exception\GuzzleException
+     * @param int $topGroupId
+     * @return User[]
      */
-    public function getSubGroups(Group $topGroup): array
+    public function getUsersByToGroupId(int $topGroupId): array
     {
-        $request = $this->request->getSubGroups($topGroup);
-        $responseData = $this->sendRequest($request);
+        $groups = $this->getAllGroups($topGroupId);
+        $projects = $this->getAllProjects($groups);
+        return $this->getMembers($groups, $projects);
+    }
 
-        if (empty($responseData)) {
-            return [];
+    private function getGroupMembers(int $groupId)
+    {
+        return $this->client->groups()->members($groupId);
+    }
+
+    private function getProjectMembers(int $projectId)
+    {
+        return $this->client->projects()->members($projectId);
+    }
+
+    /**
+     * @param array $rawGroups
+     * @param array $rawProjects
+     * @return User[]
+     */
+    private function getMembers(array $rawGroups, array $rawProjects): array
+    {
+        $groupsMembers = $this->getGroupsMembers($rawGroups);
+        $projectsMembers = $this->getProjectsMembers($rawProjects);
+
+        /** @var User[] $members */
+        $members = [];
+
+        foreach ($groupsMembers as $groupId => $groupsMember) {
+            foreach ($groupsMember as $groupMember) {
+                $memberId = $groupMember['id'];
+                if (!isset($members[$memberId])) {
+                    $members[$groupMember['id']] = new User($groupMember['id'], $groupMember['name'], $groupMember['username']);
+                }
+                $members[$memberId]->addGroup(new Group($groupId, $rawGroups[$groupId]['name'], $groupMember['access_level']));
+            }
         }
 
-        $groups = [];
-        foreach ($responseData as $subGroup) {
-            $group = $this->getGroup($subGroup['id']);
+        foreach ($projectsMembers as $projectId => $projectsMember) {
+            foreach ($projectsMember as $projectMember) {
+                $memberId = $projectMember['id'];
+                if (!isset($members[$projectMember['id']])) {
+                    $members[$projectMember['id']] = new User($projectMember['id'], $projectMember['name'], $projectMember['username']);
+                }
+                $members[$memberId]->addProject(new Project($projectId, $rawProjects[$projectId]['name'], $projectMember['access_level']));
 
-            $subGroups = $this->getSubGroups($group);
-            $groups[$group->getId()] = $group;
-
-            if (!empty($subGroups)) {
-                $groups = array_merge($groups, $subGroups);
             }
+        }
+
+        return $members;
+    }
+
+    /**
+     * @param array $groups
+     * @return array
+     */
+    private function getGroupsMembers(array $groups): array
+    {
+        $members = [];
+        foreach ($groups as $group) {
+            $members[$group['id']] = $this->getGroupMembers($group['id']);
+        }
+
+        return $members;
+    }
+
+    /**
+     * @param array $projects
+     * @return array
+     */
+    private function getProjectsMembers(array $projects): array
+    {
+        $members = [];
+        foreach ($projects as $project) {
+            $members[$project['id']] = $this->getProjectMembers($project['id']);
+        }
+
+        return $members;
+    }
+
+    private function getGroup(int $groupId)
+    {
+        return $this->client->groups()->show($groupId);
+    }
+
+    private function getProject(int $projectId)
+    {
+        return $this->client->projects()->show($projectId);
+    }
+
+    private function getAllProjects(array $groups)
+    {
+        $projects = [];
+        foreach ($groups as $group) {
+            foreach ($group['projects'] as $project) {
+                $projectId = $project['id'];
+                $projects[$projectId] = $this->getProject($projectId);
+            }
+        }
+
+        return $projects;
+    }
+
+    private function getAllGroups(int $topGroupId): array
+    {
+        $groups = [];
+        $groupsIds = [];
+
+        $groupsIds[$topGroupId] = $topGroupId;
+        $groupsIds = $this->getAllSubGroupsIds($groupsIds);
+
+        foreach ($groupsIds as $groupId) {
+            $groups[$groupId] = $this->getGroup($groupId);
         }
 
         return $groups;
     }
 
     /**
-     * @param Group $group
-     * @return User[]
+     * @param int[] $groupsIds
+     * @return int[]
      */
-    public function getGroupMembers(Group $group): array
+    private function getAllSubGroupsIds(array $groupsIds): array
     {
-        $request = $this->request->getGroupMembers($group);
-        $responseMembers = $this->sendRequest($request);
-        $members = [];
+        foreach ($groupsIds as $groupId) {
+            $subGroups = $this->client->groups()->subgroups($groupId);
 
-        foreach ($responseMembers as $responseMember) {
-            $user = Group\Member::create($responseMember);
-            $members[$user->getId()] = $user;
-            $this->members[$user->getId()] = $user;
-        }
+            if (empty($subGroups)) {
+                return $groupsIds;
+            }
 
-        bdump($members);
-        $group->setMembers($members);
-
-        return $members;
-    }
-
-    /**
-     * @param int $projectId
-     * @return User[]
-     */
-    public function getProjectMembers(int $projectId): array
-    {
-        $request = $this->request->getProjectMembers($projectId);
-        $responseMembers = $this->sendRequest($request);
-
-        $members = [];
-        foreach ($responseMembers as $responseMember) {
-            $user = User::create($responseMember);
-            $members[$user->getId()] = $user;
-        }
-
-        return $members;
-    }
-
-    public function getAccesses($topGroupId)
-    {
-        bdump('---TOP---');
-        $topGroup = $this->getGroup($topGroupId);
-        bdump('/---TOP---');
-
-        $groupMembers = $this->getGroupMembers($topGroup);
-        $subGroups = $this->getSubGroups($topGroup);
-        bdump($topGroup);
-        bdump($subGroups);
-
-        bdump($this->groups);
-        bdump($this->members);
-
-        /*foreach ($this->members as $member) {
-            $this->getUserMemberShips($member->getId());
-        }*/
-
-        $groups = array_merge([$topGroup], $subGroups);
-
-
-        /** @var Project[] $projects */
-        $projects = [];
-
-        foreach ($groups as $group) {
-            $projects = array_merge($group->getProjects(), $projects);
-        }
-
-        $projectMembers = [];
-        foreach ($projects as $project) {
-            $projectMembers[$project->getId()] = $this->getProjectMembers($project->getId());
-        }
-
-        $usersInfo = [];
-        foreach ($projectMembers as $projectMember) {
-            foreach ($projectMember as $projectMember2) {
-                $usersInfo[$projectMember2->getId()] = $projectMember2;
+            foreach ($subGroups as $subGroup) {
+                $groupsIds[] = $subGroup['id'];
             }
         }
 
-        foreach ($groupMembers as $groupMember) {
-            $userInfo[$groupMember->getId()] = $groupMember;
-        }
-
-
-        $users = [];
-        foreach ($usersInfo as $userInfo) {
-            $userProjects = [];
-            foreach ($projects as $project) {
-                if ($project->getCreatorId() === $userInfo->getId()) {
-                    $userProjects[] = \App\Libs\Gitlab\Response\Project::create(
-                        $project->getId(),
-                        $project->getName(),
-                        Permission::create(0)
-                    );
-                }
-            }
-            $users[] = \App\Libs\Gitlab\Response\User::create(
-                $userInfo->getName(),
-                $userInfo->getUsername(),
-                [],
-                $userProjects
-            );
-        }
-
-        $response = Response::create($users);
-
-        return $projectMembers;
-    }
-
-    public function test(int $topGroupId)
-    {
-        $client = new \Gitlab\Client();
-        $client->authenticate(self::ACCESS_TOKEN, \Gitlab\Client::AUTH_OAUTH_TOKEN);
-
-        $topGroup = $client->groups()->show($topGroupId);
-        $topGroupMembers = $client->groups()->members($topGroupId);
-        $subGroups = $client->groups()->subgroups($topGroupId);
-        bdump($topGroup);
-        bdump($topGroupMembers);
-        bdump($subGroups);
-
+        return array_unique($this->getAllSubGroupsIds($groupsIds));
     }
 }

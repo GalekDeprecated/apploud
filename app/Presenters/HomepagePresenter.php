@@ -6,10 +6,12 @@ namespace App\Presenters;
 
 use App\Libs\Gitlab\Client;
 use Nette;
+use Nette\Application\UI\Form;
 
 
 final class HomepagePresenter extends Nette\Application\UI\Presenter
 {
+    const DEFAULT_GROUP_ID = 10975505;
     /**
      * @var Client
      */
@@ -21,18 +23,24 @@ final class HomepagePresenter extends Nette\Application\UI\Presenter
         $this->client = $client;
     }
 
-    public function actionDefault(int $topGroupId=10975505)
+    public function actionResult(int $id)
     {
-        $this->client->getAccesses($topGroupId);
-        $this->client->test($topGroupId);
-        /*bdump('1');
-        $this->client->getAccesses(10975587);
-        bdump('2');
-        $this->client->getAccesses(10975598);
-        bdump('3');
-        $this->client->getAccesses(10975610);
-        bdump('4');
-        $this->client->getAccesses(10975599);*/
-        //$this->sendJson($this->client->getAccesses($topGroupId));
+        $this->template->gitlabUsers = $this->client->getUsersByToGroupId($id);
+    }
+
+    public function createComponentGitlabForm()
+    {
+        $form = new Form();
+        $form->addInteger('topGroupId', 'Top group id')
+            ->setRequired(true);
+        $form->addSubmit('send', 'Odeslat');
+        $form->onSuccess[] = [$this, 'formSucceeded'];
+
+        return $form;
+    }
+
+    public function formSucceeded(Form $form, $data): void
+    {
+        $this->redirect('Homepage:result', ['id' => $data['topGroupId']]);
     }
 }

@@ -2,3 +2,4 @@ config/local.neon
 .idea/
 vendor/
 temp/cache/
+logs/nginx/

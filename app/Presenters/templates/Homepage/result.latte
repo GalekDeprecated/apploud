@@ -1,0 +1,19 @@
+{block content}
+<h1>Kontrola přístupů gitlabu</h1>
+{control gitlabForm}
+
+{foreach $gitlabUsers as $gitlabUser}
+    <h2>{$gitlabUser->getName()} ({$gitlabUser->getUsername()})</h2>
+    <p>Groups:</p>
+    <ul>
+        {foreach $gitlabUser->getGroups() as $group}
+            <li>{$group->getName()} ({$group->getAccessLevelName()})</li>
+        {/foreach}
+    </ul>
+    <p>Projects:</p>
+    <ul>
+        {foreach $gitlabUser->getProjects() as $project}
+            <li>{$project->getName()} ({$project->getAccessLevelName()})</li>
+        {/foreach}
+    </ul>
+{/foreach}
